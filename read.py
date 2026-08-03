@@ -1,126 +1,239 @@
 import os
 import time
+import mimetypes
+from pathlib import Path
+from datetime import datetime
 
 REQUEST_FILE = "read_request.txt"
 RESPONSE_FILE = "read_response.txt"
 
+# Change this to your media library location
+SEARCH_DIRECTORY = "."
+
 
 ############################################################
-# Parse key=value request
+# Parse request
 ############################################################
 
-def parse_request(path):
-
+def parse_request(filepath):
     request = {}
-
-    with open(path, "r") as f:
-
-        for line in f:
-
+    with open(filepath, "r") as file:
+        for line in file:
             line = line.strip()
-
             if "=" in line:
-
                 key, value = line.split("=", 1)
-
                 request[key] = value
 
     return request
 
 
 ############################################################
-# Read requested file
+# Determine media type
 ############################################################
 
-def read_file(filename):
+def determine_media_type(path):
+    mime, _ = mimetypes.guess_type(path)
 
-    if not os.path.exists(filename):
+    if mime is None:
+        return "other"
 
-        return None
+    if mime.startswith("image"):
+        return "image"
 
-    with open(filename, "r") as f:
+    if mime.startswith("video"):
+        return "video"
 
-        return f.read()
+    if mime.startswith("audio"):
+        return "audio"
+
+    if mime.startswith("text"):
+        return "text"
+
+    if mime == "application/pdf":
+        return "pdf"
+
+    if "zip" in mime:
+        return "archive"
+
+    return "other"
+
+
+############################################################
+# Get metadata
+############################################################
+
+def get_metadata(filename):
+    path = Path(filename)
+
+    if not path.exists():
+        return {
+            "status": "failure",
+            "message": "File not found"
+        }
+
+    stats = path.stat()
+
+    return {
+        "status": "success",
+        "file_name": path.name,
+        "file_path": str(path.resolve()),
+        "file_type": path.suffix.lower(),
+        "media_type":
+            determine_media_type(path),
+        "file_size":
+            stats.st_size,
+        "modified":
+            datetime.fromtimestamp(
+                stats.st_mtime
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+    }
+
+
+############################################################
+# Search files
+############################################################
+
+def search_files(keyword):
+    results = []
+
+    keyword = keyword.lower()
+    root = Path(SEARCH_DIRECTORY)
+
+    for file in root.rglob("*"):
+        if file.is_file():
+            if keyword in file.name.lower():
+                metadata = get_metadata(file)
+                results.append(metadata)
+
+    return results
 
 
 ############################################################
 # Write response
 ############################################################
 
-def write_response(status, filename="", data="", message=""):
-
-    with open(RESPONSE_FILE, "w") as f:
-
-        f.write(f"status={status}\n")
-
-        if filename:
-
-            f.write(f"file_name={filename}\n")
-
-        if data:
-
-            f.write(f"data={data}\n")
-
-        if message:
-
-            f.write(f"message={message}\n")
+def write_response(data):
+    with open(RESPONSE_FILE, "w") as file:
+        for key, value in data.items():
+            file.write(
+                f"{key}={value}\n"
+            )
 
 
 ############################################################
-# Main loop
+# Build search response
+############################################################
+
+def build_search_response(results):
+    response = {"status": "success", "results": len(results)}
+
+    index = 1
+
+    for item in results:
+        response[f"file{index}_name"] = (
+            item["file_name"]
+        )
+        response[f"file{index}_path"] = (
+            item["file_path"]
+        )
+        response[f"file{index}_type"] = (
+            item["file_type"]
+        )
+        response[f"file{index}_media"] = (
+            item["media_type"]
+        )
+        response[f"file{index}_size"] = (
+            item["file_size"]
+        )
+        index += 1
+
+    return response
+
+
+############################################################
+# Main service
 ############################################################
 
 def main():
-
-    print("Read Service Running...")
+    print("==============================")
+    print(" Read Service Running")
+    print("==============================")
 
     while True:
-
         if os.path.exists(REQUEST_FILE):
-
-            print("Read request found!")
-
-            request = parse_request(REQUEST_FILE)
-
-            if "file_name" not in request:
-
-                write_response(
-                    "failure",
-                    message="Missing file_name"
+            print("Request received")
+            try:
+                request = parse_request(
+                    REQUEST_FILE
                 )
+                command = request.get(
+                    "command",
+                    "READ"
+                ).upper()
 
-            else:
+                ################################################
+                # READ COMMAND
+                ################################################
 
-                filename = request["file_name"]
+                if command == "READ":
+                    if "file_name" in request:
+                        response = get_metadata(
+                            request["file_name"]
+                        )
+                    else:
+                        response = {
+                            "status": "failure",
+                            "message":
+                                "Missing file_name"
+                        }
 
-                data = read_file(filename)
+                ################################################
+                # SEARCH COMMAND
+                ################################################
 
-                if data is None:
+                elif command == "SEARCH":
+                    if "keyword" in request:
+                        results = search_files(
+                            request["keyword"]
+                        )
+                        response = (
+                            build_search_response(
+                                results
+                            )
+                        )
+                    else:
+                        response = {
+                            "status": "failure",
+                            "message":
+                                "Missing keyword"
+                        }
 
-                    write_response(
-                        "failure",
-                        filename=filename,
-                        message="File not found"
-                    )
+                ################################################
+                # INVALID COMMAND
+                ################################################
 
                 else:
+                    response = {
+                        "status": "failure",
+                        "message":
+                            "Unknown command"
+                    }
 
-                    write_response(
-                        "success",
-                        filename=filename,
-                        data=data
-                    )
+                write_response(response)
 
-                    print(f"Read {filename}")
+            except Exception as e:
+                write_response({
+                    "status": "failure",
+                    "message": str(e)
+                })
 
-            os.remove(REQUEST_FILE)
-
+            finally:
+                if os.path.exists(REQUEST_FILE):
+                    os.remove(REQUEST_FILE)
         time.sleep(1)
 
 
-############################################################
-
 if __name__ == "__main__":
-
     main()
-    
