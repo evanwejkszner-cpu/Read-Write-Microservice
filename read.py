@@ -11,10 +11,6 @@ RESPONSE_FILE = "read_response.txt"
 SEARCH_DIRECTORY = "."
 
 
-############################################################
-# Parse request
-############################################################
-
 def parse_request(filepath):
     request = {}
     with open(filepath, "r") as file:
@@ -26,10 +22,6 @@ def parse_request(filepath):
 
     return request
 
-
-############################################################
-# Determine media type
-############################################################
 
 def determine_media_type(path):
     mime, _ = mimetypes.guess_type(path)
@@ -57,10 +49,6 @@ def determine_media_type(path):
 
     return "other"
 
-
-############################################################
-# Get metadata
-############################################################
 
 def get_metadata(filename):
     path = Path(filename)
@@ -91,10 +79,6 @@ def get_metadata(filename):
     }
 
 
-############################################################
-# Search files
-############################################################
-
 def search_files(keyword):
     results = []
 
@@ -110,10 +94,6 @@ def search_files(keyword):
     return results
 
 
-############################################################
-# Write response
-############################################################
-
 def write_response(data):
     with open(RESPONSE_FILE, "w") as file:
         for key, value in data.items():
@@ -121,10 +101,6 @@ def write_response(data):
                 f"{key}={value}\n"
             )
 
-
-############################################################
-# Build search response
-############################################################
 
 def build_search_response(results):
     response = {"status": "success", "results": len(results)}
@@ -152,10 +128,6 @@ def build_search_response(results):
     return response
 
 
-############################################################
-# Main service
-############################################################
-
 def main():
     print("==============================")
     print(" Read Service Running")
@@ -173,9 +145,6 @@ def main():
                     "READ"
                 ).upper()
 
-                ################################################
-                # READ COMMAND
-                ################################################
 
                 if command == "READ":
                     if "file_name" in request:
@@ -189,9 +158,6 @@ def main():
                                 "Missing file_name"
                         }
 
-                ################################################
-                # SEARCH COMMAND
-                ################################################
 
                 elif command == "SEARCH":
                     if "keyword" in request:
@@ -210,11 +176,9 @@ def main():
                                 "Missing keyword"
                         }
 
-                ################################################
-                # INVALID COMMAND
-                ################################################
 
                 else:
+                    # If command is invalid
                     response = {
                         "status": "failure",
                         "message":
@@ -230,8 +194,10 @@ def main():
                 })
 
             finally:
-                if os.path.exists(REQUEST_FILE):
+                try:
                     os.remove(REQUEST_FILE)
+                except FileNotFoundError:
+                    pass
         time.sleep(1)
 
 
